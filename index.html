@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт СЗ — Конвертер + Дашборд</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Arial, sans-serif;
+  background: #eef2f7;
+  min-height: 100vh;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 2rem;
+}
+.card {
+  background: #fff; border-radius: 18px;
+  box-shadow: 0 6px 32px rgba(31,78,121,0.12);
+  padding: 2.5rem 2.25rem; width: 100%; max-width: 900px;
+}
+
+/* ── Header ── */
+.header { display: flex; align-items: center; gap: 14px; margin-bottom: 1.75rem; }
+.logo { width: 46px; height: 46px; border-radius: 12px; background: #1F4E79; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.header-text h1 { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+.header-text p  { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: #dbeafe; color: #1e40af; margin-top: 6px; }
+
+/* ── Drop zone ── */
+#drop-zone { border: 2px dashed #bfdbfe; border-radius: 14px; padding: 2.5rem 1.5rem; text-align: center; cursor: pointer; background: #f0f7ff; transition: background .15s, border-color .15s; }
+#drop-zone.hover { background: #dbeafe; border-color: #3b82f6; }
+#drop-zone input { display: none; }
+.upload-icon { width: 52px; height: 52px; border-radius: 14px; background: #dbeafe; margin: 0 auto 14px; display: flex; align-items: center; justify-content: center; }
+.drop-title { font-size: 15px; font-weight: 600; color: #1e3a5f; margin-bottom: 4px; }
+.drop-hint  { font-size: 12px; color: #93aec8; }
+
+/* ── Status / Progress ── */
+.status-wrap { margin-top: 14px; min-height: 22px; text-align: center; }
+.status       { font-size: 13px; color: #6b7280; }
+.status.error { color: #dc2626; }
+.prog-wrap { margin-top: 12px; height: 5px; border-radius: 99px; background: #e5e7eb; overflow: hidden; display: none; }
+.prog-bar  { height: 100%; border-radius: 99px; background: linear-gradient(90deg,#1F4E79,#2E75B6); width:0%; transition: width .25s; }
+
+/* ── Result area ── */
+#result { display: none; margin-top: 1.75rem; }
+hr.divider { border: none; border-top: 1px solid #f0f4f8; margin-bottom: 1.5rem; }
+
+.result-head { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; }
+.check-circle { width: 30px; height: 30px; border-radius: 50%; background: #d1fae5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.check-circle svg { width: 15px; height: 15px; stroke: #059669; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.result-head-text .t { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+.result-head-text .s { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 1.5rem; }
+.stat { background: #f0f7ff; border-radius: 10px; padding: 12px 10px; text-align: center; }
+.stat .n { font-size: 24px; font-weight: 700; color: #1F4E79; line-height: 1; }
+.stat .l { font-size: 11px; color: #6b7280; margin-top: 4px; }
+
+/* ── Tabs ── */
+.tab-row { display: flex; gap: 6px; margin-bottom: 1.5rem; border-bottom: 2px solid #f0f4f8; padding-bottom: 0; }
+.tab-btn {
+  padding: 8px 18px; border: none; background: transparent;
+  font-size: 13px; font-weight: 600; color: #9ca3af; cursor: pointer;
+  border-bottom: 2px solid transparent; margin-bottom: -2px;
+  border-radius: 8px 8px 0 0; transition: color .15s;
+}
+.tab-btn:hover { color: #1F4E79; }
+.tab-btn.active { color: #1F4E79; border-bottom-color: #1F4E79; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── Download tab ── */
+.section-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 1.5rem; }
+.tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; font-weight: 500; background: #ede9fe; color: #5b21b6; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; }
+.dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.btn-dl { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px; border-radius: 11px; border: none; background: #1F4E79; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s; }
+.btn-dl:hover { background: #163c60; }
+.btn-dl svg { width: 16px; height: 16px; fill: #fff; }
+.btn-reset { display: block; width: 100%; margin-top: 9px; padding: 10px; border-radius: 11px; border: 1px solid #e5e7eb; background: transparent; color: #6b7280; font-size: 13px; cursor: pointer; transition: background .15s; }
+.btn-reset:hover { background: #f9fafb; }
+
+/* ── Dashboard tab ── */
+.dash-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 1.75rem; }
+.dash-card { background: #f0f7ff; border-radius: 10px; padding: 14px 12px; text-align: center; }
+.dash-card .dn { font-size: 26px; font-weight: 700; color: #1F4E79; line-height: 1; }
+.dash-card .dl { font-size: 11px; color: #6b7280; margin-top: 5px; }
+
+.dash-section { margin-bottom: 2rem; }
+.dash-section-title { font-size: 13px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #f0f4f8; }
+
+/* ── Bar chart (CSS) ── */
+.bar-list { display: flex; flex-direction: column; gap: 7px; }
+.bar-row { display: grid; grid-template-columns: 160px 1fr 50px 40px; align-items: center; gap: 10px; }
+.bar-label { font-size: 11px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.bar-track { height: 18px; background: #f1f5f9; border-radius: 4px; overflow: hidden; position: relative; }
+.bar-fill  { height: 100%; border-radius: 4px; transition: width .4s ease; }
+.bar-pct   { font-size: 11px; font-weight: 600; color: #374151; }
+.bar-cnt   { font-size: 10px; color: #9ca3af; text-align: right; }
+
+/* ── Heatmap ── */
+.heatmap-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
+.heatmap { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+.heatmap thead th { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: center; font-size: 10px; white-space: nowrap; border: 1px solid rgba(255,255,255,0.15); position: sticky; top: 0; }
+.heatmap thead th.rrs-col { text-align: left; min-width: 150px; background: #163c60; }
+.heatmap thead th.avg-col { background: #163c60; }
+.heatmap tbody td { padding: 6px 10px; text-align: center; border: 1px solid #f0f0f0; font-size: 11px; font-weight: 600; }
+.heatmap tbody td.rrs-name { text-align: left; font-weight: 600; color: #1a1a2e; background: #f8fafc !important; cursor: pointer; white-space: nowrap; }
+.heatmap tbody td.rrs-name:hover { background: #e8f0ff !important; }
+.heatmap tbody tr:hover td:not(.rrs-name) { filter: brightness(0.95); }
+.heatmap tfoot td { background: #f8fafc; font-weight: 700; font-size: 11px; padding: 7px 10px; border: 1px solid #e5e7eb; text-align: center; }
+.heatmap tfoot td.rrs-name { text-align: left; color: #6b7280; }
+
+/* ── Filial table ── */
+.rrs-select-wrap { margin-bottom: 12px; }
+.rrs-select-wrap select { padding: 7px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151; background: #fff; cursor: pointer; }
+.filial-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.filial-table th { background: #f8fafc; color: #6b7280; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 8px 12px; text-align: left; border-bottom: 2px solid #e5e7eb; }
+.filial-table th.num { text-align: center; }
+.filial-table td { padding: 7px 12px; border-bottom: 1px solid #f5f5f5; color: #374151; }
+.filial-table td.num { text-align: center; font-weight: 600; }
+.filial-table tr:last-child td { border-bottom: none; }
+.filial-table tr:hover td { background: #fafbff; }
+.mini-bar { height: 8px; border-radius: 3px; display: inline-block; min-width: 4px; }
+
+.footer { margin-top: 1.75rem; font-size: 11px; color: #cbd5e1; text-align: center; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { animation: spin 1s linear infinite; transform-origin: center; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="rgba(255,255,255,0.9)"/>
+        <path d="M14 2v6h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="8" y1="13" x2="16" y2="13" stroke="#1F4E79" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="8" y1="17" x2="13" y2="17" stroke="#1F4E79" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>Конвертер + Дашборд</h1>
+      <p>Оптимизация отчёта и аналитика по прогрессу</p>
+      <span class="badge">11. див. Северо-Западный</span>
+    </div>
+  </div>
+
+  <!-- Auto-load banner -->
+  <div id="auto-banner" style="display:none;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin-bottom:12px">
+    <div id="auto-icon" style="width:28px;height:28px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg id="auto-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+    </div>
+    <div style="flex:1">
+      <div id="auto-title" style="font-size:13px;font-weight:700;color:#1e3a5f">Загружаю data.xlsx…</div>
+      <div id="auto-sub" style="font-size:11px;color:#6b7280;margin-top:1px">Автозагрузка из репозитория</div>
+    </div>
+    <div id="auto-time" style="font-size:11px;color:#9ca3af"></div>
+  </div>
+
+  <!-- Drop zone -->
+  <div id="drop-zone" onclick="document.getElementById('fi').click()">
+    <input type="file" id="fi" accept=".xlsx">
+    <div class="upload-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="#2563eb">
+        <path d="M19 13v6H5v-6H3v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6h-2zm-7-9l-4 4h3v8h2V8h3l-4-4z"/>
+      </svg>
+    </div>
+    <div class="drop-title">Или загрузи файл вручную</div>
+    <div class="drop-hint">Файл .xlsx — выгрузка из системы обучения</div>
+  </div>
+
+  <div class="prog-wrap" id="pw"><div class="prog-bar" id="pb"></div></div>
+  <div class="status-wrap"><div class="status" id="st"></div></div>
+
+  <!-- Result -->
+  <div id="result">
+    <hr class="divider">
+
+    <div class="result-head">
+      <div class="check-circle">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="result-head-text">
+        <div class="t">Данные загружены</div>
+        <div class="s" id="out-name"></div>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n" id="s1">—</div><div class="l">Учеников</div></div>
+      <div class="stat"><div class="n" id="s2">—</div><div class="l">Курсов</div></div>
+      <div class="stat"><div class="n" id="s3">—</div><div class="l">РРС</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tab-row">
+      <button class="tab-btn active" id="tb-dl"   onclick="switchTab('dl')">📥 Скачать отчёт</button>
+      <button class="tab-btn"        id="tb-dash" onclick="switchTab('dash')">📊 Дашборд</button>
+    </div>
+
+    <!-- ═══ TAB: Download ═══ -->
+    <div class="tab-pane active" id="tp-dl">
+      <div class="section-label">Курсы в отчёте</div>
+      <div class="tags" id="tags"></div>
+
+      <div class="section-label">Цветовая индикация</div>
+      <div class="legend" style="margin-bottom:1.5rem">
+        <div class="leg-item"><div class="dot" style="background:#FFE0E0;border:1px solid #fca5a5"></div>0% — не начато</div>
+        <div class="leg-item"><div class="dot" style="background:#FFF2CC;border:1px solid #fde047"></div>1–99% — в процессе</div>
+        <div class="leg-item"><div class="dot" style="background:#E2EFDA;border:1px solid #86efac"></div>100% — завершено</div>
+      </div>
+
+      <button class="btn-dl" onclick="doDownload()">
+        <svg viewBox="0 0 24 24"><path d="M19 13v6H5v-6H3v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6h-2zm-7 1l-4-4h3V3h2v7h3l-4 4z"/></svg>
+        Скачать оптимизированный отчёт
+      </button>
+      <button class="btn-reset" onclick="doReset()">Загрузить другой файл</button>
+    </div>
+
+    <!-- ═══ TAB: Dashboard ═══ -->
+    <div class="tab-pane" id="tp-dash">
+
+      <!-- Metric cards -->
+      <div class="dash-cards">
+        <div class="dash-card"><div class="dn" id="dc-emp">—</div><div class="dl">Учеников</div></div>
+        <div class="dash-card"><div class="dn" id="dc-rrs">—</div><div class="dl">РРС</div></div>
+        <div class="dash-card"><div class="dn" id="dc-avg">—</div><div class="dl">Средний прогресс</div></div>
+      </div>
+
+      <!-- Section 1: Bar chart avg by РРС -->
+      <div class="dash-section">
+        <div class="dash-section-title">Средний прогресс по РРС</div>
+        <div class="bar-list" id="rrs-bars"></div>
+      </div>
+
+      <!-- Section 2: Heatmap РРС × Course -->
+      <div class="dash-section">
+        <div class="dash-section-title">Прогресс по курсам × РРС</div>
+        <div class="heatmap-wrap">
+          <table class="heatmap" id="heatmap"></table>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:6px">Нажми на РРС, чтобы увидеть разбивку по филиалам ↓</div>
+      </div>
+
+      <!-- Section 3: Filial breakdown -->
+      <div class="dash-section">
+        <div class="dash-section-title">Разбивка по филиалам</div>
+        <div class="rrs-select-wrap">
+          <select id="rrs-select" onchange="renderFilials()">
+            <option value="">— Выбери РРС —</option>
+          </select>
+        </div>
+        <table class="filial-table" id="filial-table">
+          <thead><tr>
+            <th>Филиал</th>
+            <th class="num">Учеников</th>
+            <th class="num">Средний прогресс</th>
+            <th style="min-width:120px"></th>
+          </tr></thead>
+          <tbody id="filial-body"></tbody>
+        </table>
+      </div>
+
+    </div><!-- /tp-dash -->
+  </div><!-- /result -->
+
+  <div class="footer">Работает офлайн · данные не покидают браузер</div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════
+   CONFIG
+══════════════════════════════════════════════════════ */
+const DIV_FILTER  = 'Северо-Западный';
+const COLS_BEFORE = ['Имя','Был(а) онлайн','Добавлен','Группы'];
+const COLS_AFTER  = ['Должность','Код сотрудника','Дата трудоустройства','Дивизион','РРС','Филиал'];
+const MIN_CNT     = 10;
+const S = { DEF:0, HDR_DARK:1, HDR_BLUE:2, RED:3, YELLOW:4, GREEN:5 };
+
+const STYLES_XML =
+`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="5">
+<font><sz val="9"/><name val="Arial"/></font>
+<font><b/><sz val="9"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
+<font><sz val="9"/><color rgb="FFC00000"/><name val="Arial"/></font>
+<font><sz val="9"/><color rgb="FF7F6000"/><name val="Arial"/></font>
+<font><b/><sz val="9"/><color rgb="FF375623"/><name val="Arial"/></font>
+</fonts>
+<fills count="7">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF2E75B6"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFE0E0"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE2EFDA"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border>
+<left style="thin"><color rgb="FFD5D5D5"/></left>
+<right style="thin"><color rgb="FFD5D5D5"/></right>
+<top style="thin"><color rgb="FFD5D5D5"/></top>
+<bottom style="thin"><color rgb="FFD5D5D5"/></bottom>
+<diagonal/>
+</border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="6">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+/* ══════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════ */
+const VALID_RRS = [
+  'РРС СЗ СПБ Север','РРС СЗ СПБ Восток','РРС СЗ СПБ Юг',
+  'РРС СЗ Север','РРС СЗ ЛО Восток','РРС СЗ ЛО Запад','РРС СЗ Юг'
+];
+let outBlob  = null;
+let outName  = '';
+let dashData = [];   // [{ррс, филиал, курсы:{name:val}}]
+let allCourses = [];
+
+/* ══════════════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════════════ */
+function setProg(p) {
+  document.getElementById('pw').style.display = p > 0 ? 'block' : 'none';
+  document.getElementById('pb').style.width   = p + '%';
+}
+function setStatus(msg, cls) {
+  const el = document.getElementById('st');
+  el.textContent = msg;
+  el.className   = 'status' + (cls ? ' ' + cls : '');
+}
+function str2ab(s) {
+  const b = new ArrayBuffer(s.length), v = new Uint8Array(b);
+  for (let i = 0; i < s.length; i++) v[i] = s.charCodeAt(i) & 0xFF;
+  return b;
+}
+function parseProg(val) {
+  const r = {};
+  if (!val) return r;
+  String(val).split(';').forEach(p => {
+    const m = p.trim().match(/^(.+?):\s*(\d+)%/);
+    if (m) r[m[1].trim()] = parseInt(m[2]);
+  });
+  return r;
+}
+function avg(arr) {
+  const f = arr.filter(v => v !== null && v !== undefined && v !== '');
+  return f.length ? Math.round(f.reduce((a,b) => a+b, 0) / f.length) : null;
+}
+function progColor(v) {
+  if (v === null || v === undefined) return { bg:'#F5F5F5', fg:'#AAAAAA' };
+  if (v === 0)   return { bg:'#FFE0E0', fg:'#C00000' };
+  if (v === 100) return { bg:'#E2EFDA', fg:'#375623' };
+  if (v < 40)    return { bg:'#FFE8DC', fg:'#9A3400' };
+  if (v < 70)    return { bg:'#FFF2CC', fg:'#7F6000' };
+  return             { bg:'#EAF5DC', fg:'#2D6A10' };
+}
+function barColor(v) {
+  if (v === null) return '#d1d5db';
+  if (v < 40)  return '#f87171';
+  if (v < 70)  return '#fbbf24';
+  return '#4ade80';
+}
+function switchTab(id) {
+  ['dl','dash'].forEach(t => {
+    document.getElementById('tp-'+t).classList.toggle('active', t===id);
+    document.getElementById('tb-'+t).classList.toggle('active', t===id);
+  });
+  if (id === 'dash') renderDashboard();
+}
+
+/* ══════════════════════════════════════════════════════
+   PROCESS FILE
+══════════════════════════════════════════════════════ */
+async function processFile(file) {
+  outBlob = null; dashData = []; allCourses = [];
+  outName = file.name.replace(/\.xlsx$/i,'') + '_СЗ_opt.xlsx';
+  setStatus('Читаю файл…');
+  setProg(15);
+  document.getElementById('result').style.display = 'none';
+
+  try {
+    const wb  = XLSX.read(new Uint8Array(await file.arrayBuffer()), { type:'array' });
+    setProg(30);
+
+    const sn  = wb.SheetNames.find(s => s==='Report')
+             || wb.SheetNames.find(s => s!=='Worksheet')
+             || wb.SheetNames[0];
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval:'' });
+    if (!raw.length) throw new Error('Файл пустой или не тот формат');
+
+    setProg(42);
+    const rows = raw.filter(r => String(r['Дивизион']||'').includes(DIV_FILTER));
+    if (!rows.length) throw new Error('Нет строк с дивизионом «' + DIV_FILTER + '»');
+
+    /* Collect courses */
+    const cnt = {}, ord = [];
+    rows.forEach(r => Object.keys(parseProg(r['Прогресс по курсам'])).forEach(c => {
+      cnt[c] = (cnt[c]||0) + 1;
+      if (!ord.includes(c)) ord.push(c);
+    }));
+    allCourses = ord.filter(c => cnt[c] >= MIN_CNT);
+    const cs = COLS_BEFORE.length, ce = cs + allCourses.length - 1;
+    const hdr = [...COLS_BEFORE, ...allCourses, ...COLS_AFTER];
+
+    setProg(55);
+
+    /* Build AOA + styleMap + dashData */
+    const sm = {};
+    hdr.forEach((_,ci) => {
+      sm[XLSX.utils.encode_cell({r:0,c:ci})] = (ci>=cs && ci<=ce) ? S.HDR_BLUE : S.HDR_DARK;
+    });
+
+    const aoa = [hdr];
+    rows.forEach((row, ri) => {
+      const p2 = parseProg(row['Прогресс по курсам']);
+      const out = [];
+      COLS_BEFORE.forEach(c => out.push(row[c] ?? ''));
+      allCourses.forEach((c,ci) => {
+        const v = p2[c];
+        if (v !== undefined) {
+          out.push(v);
+          sm[XLSX.utils.encode_cell({r:ri+1,c:cs+ci})] =
+            v===0 ? S.RED : v===100 ? S.GREEN : S.YELLOW;
+        } else {
+          out.push('');
+        }
+      });
+      COLS_AFTER.forEach(c => out.push(row[c] ?? ''));
+      aoa.push(out);
+
+      /* dashData */
+      const курсы = {};
+      allCourses.forEach(c => { const v=p2[c]; курсы[c] = v !== undefined ? v : null; });
+      dashData.push({
+        ррс:    String(row['РРС']    || '—').trim(),
+        филиал: String(row['Филиал'] || '—').trim(),
+        курсы
+      });
+    });
+
+    setProg(68);
+
+    /* Write workbook */
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = hdr.map((h,i) => ({ wch:
+      h==='Имя'||h==='Должность' ? 28 : h==='Группы' ? 32 :
+      h==='Дивизион' ? 24 : h==='Филиал' ? 22 : h==='РРС' ? 20 :
+      (i>=cs && i<=ce) ? 14 : 16
+    }));
+    ws['!autofilter'] = { ref:'A1:'+XLSX.utils.encode_col(hdr.length-1)+'1' };
+    const newWb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(newWb, ws, 'Отчёт СЗ');
+    const bin = XLSX.write(newWb, { bookType:'xlsx', type:'binary' });
+
+    setProg(80);
+
+    /* Patch ZIP */
+    const zip = await JSZip.loadAsync(str2ab(bin));
+    zip.file('xl/styles.xml', STYLES_XML);
+    const sk = Object.keys(zip.files).find(f => /^xl\/worksheets\/sheet\d+\.xml$/.test(f));
+    if (!sk) throw new Error('sheet XML not found');
+    let xml = await zip.file(sk).async('string');
+    xml = xml.replace(/<c r="([^"]+)"([^>]*?)(\s*\/?>)/g, (m,ref,mid,tail) => {
+      const si = sm[ref];
+      if (si===undefined) return m;
+      return '<c r="'+ref+'"'+mid.replace(/\s+s="\d+"/,'')+' s="'+si+'"'+tail;
+    });
+    xml = xml.replace(/(<row\b[^>]*\br="1"[^>]*)>/, '$1 ht="42" customHeight="1">');
+    zip.file(sk, xml);
+    setProg(93);
+
+    outBlob = await zip.generateAsync({ type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    setProg(100); setTimeout(()=>setProg(0),500); setStatus('');
+
+    /* Update UI */
+    const validRows = dashData.filter(r => VALID_RRS.includes(r.ррс));
+    const validRRSList = [...new Set(validRows.map(r=>r.ррс))];
+    document.getElementById('s1').textContent = validRows.length.toLocaleString('ru');
+    document.getElementById('s2').textContent = allCourses.length;
+    document.getElementById('s3').textContent = validRRSList.length;
+    document.getElementById('out-name').textContent = outName;
+
+    const tagsEl = document.getElementById('tags');
+    tagsEl.innerHTML = '';
+    allCourses.forEach(c => { const s=document.createElement('span'); s.className='tag'; s.textContent=c; tagsEl.appendChild(s); });
+
+    document.getElementById('result').style.display = 'block';
+
+  } catch(err) {
+    setStatus('Ошибка: ' + err.message, 'error');
+    setProg(0); console.error(err);
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   DASHBOARD
+══════════════════════════════════════════════════════ */
+function renderDashboard() {
+  if (!dashData.length) return;
+
+  /* Только корректно заполненные РРС */
+  const validData = dashData.filter(r => VALID_RRS.includes(r.ррс));
+
+  const byRRS = {};
+  validData.forEach(r => { if (!byRRS[r.ррс]) byRRS[r.ррс]=[]; byRRS[r.ррс].push(r); });
+
+  /* Overall avg per employee (avg of all their course values) */
+  const empAvgs = validData.map(r => avg(Object.values(r.курсы))).filter(v => v!==null);
+  const overallAvg = empAvgs.length ? Math.round(empAvgs.reduce((a,b)=>a+b,0)/empAvgs.length) : 0;
+
+  /* Preserve defined order, show only present */
+  const rrsList = VALID_RRS.filter(r => byRRS[r]);
+
+  /* Metric cards */
+  document.getElementById('dc-emp').textContent = validData.length.toLocaleString('ru');
+  document.getElementById('dc-rrs').textContent = rrsList.length;
+  const ac = progColor(overallAvg);
+  document.getElementById('dc-avg').textContent = overallAvg + '%';
+  document.getElementById('dc-avg').style.color = overallAvg < 40 ? '#C00000' : overallAvg < 70 ? '#7F6000' : '#375623';
+
+  /* Avg per RRS */
+  const rrsAvgMap = {};
+  rrsList.forEach(rrs => {
+    const ea = byRRS[rrs].map(r => avg(Object.values(r.курсы))).filter(v=>v!==null);
+    rrsAvgMap[rrs] = ea.length ? Math.round(ea.reduce((a,b)=>a+b,0)/ea.length) : null;
+  });
+  const rrsSorted = [...rrsList].sort((a,b) => (rrsAvgMap[b]||0) - (rrsAvgMap[a]||0));
+
+  /* ── Bar chart ── */
+  const barsEl = document.getElementById('rrs-bars');
+  barsEl.innerHTML = '';
+  rrsSorted.forEach(rrs => {
+    const v = rrsAvgMap[rrs];
+    const cnt = byRRS[rrs].length;
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML =
+      '<div class="bar-label" title="'+rrs+'">'+rrs+'</div>'+
+      '<div class="bar-track"><div class="bar-fill" style="width:'+
+        (v||0)+'%;background:'+barColor(v)+'"></div></div>'+
+      '<div class="bar-pct">'+(v!==null?v+'%':'—')+'</div>'+
+      '<div class="bar-cnt">'+cnt+' чел.</div>';
+    barsEl.appendChild(row);
+  });
+
+  /* ── Heatmap ── */
+  const hm = document.getElementById('heatmap');
+  hm.innerHTML = '';
+
+  /* thead */
+  const thead = hm.createTHead();
+  const tr0 = thead.insertRow();
+  const thRRS = document.createElement('th'); thRRS.className='rrs-col'; thRRS.textContent='РРС'; tr0.appendChild(thRRS);
+  allCourses.forEach(c => {
+    const th = document.createElement('th');
+    th.textContent = c.replace(/^(Курс|Тест)\s+/i,'').replace(/\s*\(СЗ\)$/i,'').trim();
+    th.title = c;
+    tr0.appendChild(th);
+  });
+  const thAvg = document.createElement('th'); thAvg.className='avg-col'; thAvg.textContent='Среднее'; tr0.appendChild(thAvg);
+
+  /* tbody */
+  const tbody = hm.createTBody();
+  rrsSorted.forEach(rrs => {
+    const tr = tbody.insertRow();
+    /* RRS name cell */
+    const td0 = tr.insertCell();
+    td0.className = 'rrs-name'; td0.textContent = rrs;
+    td0.onclick = () => selectRRS(rrs);
+
+    /* Course cells */
+    allCourses.forEach(c => {
+      const vals = byRRS[rrs].map(r=>r.курсы[c]).filter(v=>v!==null&&v!==undefined);
+      const v = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+      const td = tr.insertCell();
+      const col = progColor(v);
+      td.style.background = col.bg; td.style.color = col.fg;
+      td.textContent = v !== null ? v+'%' : '—';
+    });
+
+    /* Avg cell */
+    const tdA = tr.insertCell();
+    const va = rrsAvgMap[rrs];
+    const ca = progColor(va);
+    tdA.style.background = ca.bg; tdA.style.color = ca.fg;
+    tdA.style.fontWeight = '700';
+    tdA.textContent = va !== null ? va+'%' : '—';
+  });
+
+  /* tfoot: column averages */
+  const tfoot = document.createElement('tfoot');
+  const trf = document.createElement('tr');
+  const tf0 = document.createElement('td'); tf0.className='rrs-name'; tf0.textContent='Среднее по дивизиону'; trf.appendChild(tf0);
+  allCourses.forEach(c => {
+    const vals = validData.map(r=>r.курсы[c]).filter(v=>v!==null&&v!==undefined);
+    const v = vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)/vals.length) : null;
+    const td = document.createElement('td');
+    td.style.fontWeight='700';
+    const col = progColor(v);
+    td.style.color = col.fg;
+    td.textContent = v!==null ? v+'%' : '—';
+    trf.appendChild(td);
+  });
+  const tfA = document.createElement('td'); tfA.style.fontWeight='700';
+  const cfa = progColor(overallAvg); tfA.style.color = cfa.fg;
+  tfA.textContent = overallAvg+'%'; trf.appendChild(tfA);
+  tfoot.appendChild(trf); hm.appendChild(tfoot);
+
+  /* ── RRS selector ── */
+  const sel = document.getElementById('rrs-select');
+  sel.innerHTML = '<option value="">— Выбери РРС —</option>';
+  rrsSorted.forEach(rrs => {
+    const o = document.createElement('option'); o.value=rrs; o.textContent=rrs; sel.appendChild(o);
+  });
+}
+
+function selectRRS(rrs) {
+  document.getElementById('rrs-select').value = rrs;
+  renderFilials();
+  document.getElementById('rrs-select').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function renderFilials() {
+  const rrs = document.getElementById('rrs-select').value;
+  const tbody = document.getElementById('filial-body');
+  tbody.innerHTML = '';
+  if (!rrs) return;
+
+  const rows = dashData.filter(r => r.ррс === rrs);
+  const byFilial = {};
+  rows.forEach(r => {
+    if (!byFilial[r.филиал]) byFilial[r.филиал] = [];
+    byFilial[r.филиал].push(r);
+  });
+
+  const filials = Object.keys(byFilial).sort((a,b) => {
+    const aa = avg(byFilial[b].map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null));
+    const bb = avg(byFilial[a].map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null));
+    return (aa||0) - (bb||0);
+  });
+
+  filials.forEach(fil => {
+    const frows = byFilial[fil];
+    const empA = frows.map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null);
+    const v = empA.length ? Math.round(empA.reduce((a,b)=>a+b,0)/empA.length) : null;
+    const col = progColor(v);
+    const tr = tbody.insertRow();
+    tr.innerHTML =
+      '<td>'+fil+'</td>'+
+      '<td class="num">'+frows.length+'</td>'+
+      '<td class="num" style="color:'+col.fg+';background:'+col.bg+'">'+(v!==null?v+'%':'—')+'</td>'+
+      '<td><div class="mini-bar" style="width:'+(v||0)+'%;max-width:120px;background:'+barColor(v)+'"></div></td>';
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   DOWNLOAD / RESET
+══════════════════════════════════════════════════════ */
+function doDownload() {
+  if (!outBlob) return;
+  const url = URL.createObjectURL(outBlob);
+  const a = document.createElement('a');
+  a.href=url; a.download=outName;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+function doReset() {
+  outBlob=null; dashData=[]; allCourses=[];
+  document.getElementById('result').style.display='none';
+  document.getElementById('st').textContent='';
+  document.getElementById('fi').value='';
+  switchTab('dl');
+}
+
+/* ══════════════════════════════════════════════════════
+   EVENTS
+══════════════════════════════════════════════════════ */
+document.getElementById('fi').addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('hover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('hover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('hover');
+  const f = e.dataTransfer.files[0];
+  if (!f) return;
+  if (!f.name.match(/\.xlsx$/i)) { setStatus('Нужен файл .xlsx','error'); return; }
+  processFile(f);
+});
+
+/* ══════════════════════════════════════════════════════
+   AUTO-LOAD from ./data.xlsx
+══════════════════════════════════════════════════════ */
+async function autoLoad() {
+  const banner   = document.getElementById('auto-banner');
+  const spinner  = document.getElementById('auto-spinner');
+  const title    = document.getElementById('auto-title');
+  const sub      = document.getElementById('auto-sub');
+  const timeEl   = document.getElementById('auto-time');
+
+  banner.style.display = 'flex';
+  spinner.classList.add('spinning');
+
+  try {
+    /* Cache-bust so GitHub always serves the latest file */
+    const url = './data.xlsx?v=' + Date.now();
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('Файл data.xlsx не найден в репозитории');
+
+    const blob = await resp.blob();
+    const file = new File([blob], 'data.xlsx', { type: blob.type });
+
+    /* Show last-modified if available */
+    const lastMod = resp.headers.get('last-modified');
+    if (lastMod) {
+      const d = new Date(lastMod);
+      timeEl.textContent = 'Обновлён ' + d.toLocaleDateString('ru') + ' ' + d.toLocaleTimeString('ru', {hour:'2-digit',minute:'2-digit'});
+    }
+
+    title.textContent = 'Загружаю данные…';
+    spinner.classList.add('spinning');
+
+    await processFile(file);
+
+    /* Success state */
+    spinner.classList.remove('spinning');
+    spinner.innerHTML = '<polyline points="20 6 9 17 4 12" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+    document.getElementById('auto-icon').style.background = '#d1fae5';
+    title.textContent = 'data.xlsx загружен автоматически';
+    title.style.color = '#065f46';
+    sub.textContent = 'Обновите страницу чтобы подтянуть новый файл';
+
+    /* Auto-switch to dashboard tab */
+    switchTab('dash');
+
+  } catch(err) {
+    /* If auto-load fails — silently hide banner, let user upload manually */
+    spinner.classList.remove('spinning');
+    banner.style.display = 'none';
+    /* Only show hint if it's a real network error, not just missing file */
+    if (!err.message.includes('не найден')) {
+      setStatus('Автозагрузка не удалась: ' + err.message, 'error');
+    }
+  }
+}
+
+/* Run on page load */
+window.addEventListener('DOMContentLoaded', autoLoad);
+</script>
+</body>
+</html>
