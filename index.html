@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Отчёт СЗ — Конвертер + Дашборд</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: Arial, sans-serif; background: #eef2f7; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 2rem; }
+.card { background: #fff; border-radius: 18px; box-shadow: 0 6px 32px rgba(31,78,121,0.12); padding: 2.5rem 2.25rem; width: 100%; max-width: 980px; }
+.header { display: flex; align-items: center; gap: 14px; margin-bottom: 1.75rem; }
+.logo { width: 46px; height: 46px; border-radius: 12px; background: #1F4E79; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.header-text h1 { font-size: 18px; font-weight: 700; color: #1a1a2e; }
+.header-text p  { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 99px; background: #dbeafe; color: #1e40af; margin-top: 6px; }
+
+
+
+.status-wrap { margin-top: 10px; min-height: 22px; text-align: center; }
+.status       { font-size: 13px; color: #6b7280; }
+.status.error { color: #dc2626; }
+.prog-wrap { margin-top: 10px; height: 5px; border-radius: 99px; background: #e5e7eb; overflow: hidden; display: none; }
+.prog-bar  { height: 100%; border-radius: 99px; background: linear-gradient(90deg,#1F4E79,#2E75B6); width: 0%; transition: width .25s; }
+
+
+
+#result { display: none; margin-top: 1.75rem; }
+hr.divider { border: none; border-top: 1px solid #f0f4f8; margin-bottom: 1.5rem; }
+.result-head { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; }
+.check-circle { width: 30px; height: 30px; border-radius: 50%; background: #d1fae5; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.check-circle svg { width: 15px; height: 15px; stroke: #059669; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.result-head-text .t { font-size: 14px; font-weight: 700; color: #1a1a2e; }
+.result-head-text .s { font-size: 12px; color: #9ca3af; margin-top: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 1.5rem; }
+.stat { background: #f0f7ff; border-radius: 10px; padding: 12px 10px; text-align: center; }
+.stat .n { font-size: 22px; font-weight: 700; color: #1F4E79; line-height: 1; }
+.stat .n.warn { color: #d97706; }
+.stat .l { font-size: 11px; color: #6b7280; margin-top: 4px; }
+
+.tab-row { display: flex; gap: 6px; margin-bottom: 1.5rem; border-bottom: 2px solid #f0f4f8; }
+.tab-btn { padding: 8px 18px; border: none; background: transparent; font-size: 13px; font-weight: 600; color: #9ca3af; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; border-radius: 8px 8px 0 0; transition: color .15s; }
+.tab-btn:hover { color: #1F4E79; }
+.tab-btn.active { color: #1F4E79; border-bottom-color: #1F4E79; }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* Download tab */
+.section-label { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 1.5rem; }
+.tag { font-size: 11px; padding: 3px 9px; border-radius: 99px; font-weight: 500; background: #ede9fe; color: #5b21b6; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.leg-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; }
+.dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.btn-dl { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 13px; border-radius: 11px; border: none; background: #1F4E79; color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; transition: background .15s; }
+.btn-dl:hover { background: #163c60; }
+.btn-dl svg { width: 16px; height: 16px; fill: #fff; }
+.btn-reset { display: block; width: 100%; margin-top: 9px; padding: 10px; border-radius: 11px; border: 1px solid #e5e7eb; background: transparent; color: #6b7280; font-size: 13px; cursor: pointer; transition: background .15s; }
+.btn-reset:hover { background: #f9fafb; }
+
+/* Dashboard */
+.dash-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; margin-bottom: 1.75rem; }
+.dash-card { background: #f0f7ff; border-radius: 10px; padding: 14px 12px; text-align: center; }
+.dash-card .dn { font-size: 26px; font-weight: 700; color: #1F4E79; line-height: 1; }
+.dash-card .dl { font-size: 11px; color: #6b7280; margin-top: 5px; }
+.dash-section { margin-bottom: 2rem; }
+.dash-section-title { font-size: 13px; font-weight: 700; color: #1a1a2e; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #f0f4f8; }
+
+.bar-list { display: flex; flex-direction: column; gap: 7px; }
+.bar-row { display: grid; grid-template-columns: 180px 1fr 50px 44px; align-items: center; gap: 10px; }
+.bar-label { font-size: 11px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+.bar-track { height: 18px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+.bar-fill  { height: 100%; border-radius: 4px; transition: width .4s ease; }
+.bar-pct   { font-size: 11px; font-weight: 600; color: #374151; }
+.bar-cnt   { font-size: 10px; color: #9ca3af; text-align: right; }
+
+.heatmap-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
+.heatmap { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+.heatmap thead th { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: center; font-size: 10px; white-space: nowrap; border: 1px solid rgba(255,255,255,.15); }
+.heatmap thead th.rrs-col { text-align: left; min-width: 160px; background: #163c60; }
+.heatmap thead th.avg-col { background: #163c60; }
+.heatmap tbody td { padding: 6px 10px; text-align: center; border: 1px solid #f0f0f0; font-size: 11px; font-weight: 600; }
+.heatmap tbody td.rrs-name { text-align: left; font-weight: 600; color: #1a1a2e; background: #f8fafc !important; cursor: pointer; white-space: nowrap; }
+.heatmap tbody td.rrs-name:hover { background: #e8f0ff !important; }
+.heatmap tbody tr:hover td:not(.rrs-name) { filter: brightness(.95); }
+.heatmap tfoot td { background: #f8fafc; font-weight: 700; font-size: 11px; padding: 7px 10px; border: 1px solid #e5e7eb; text-align: center; }
+.heatmap tfoot td.rrs-name { text-align: left; color: #6b7280; }
+
+.select-wrap { margin-bottom: 12px; }
+.select-wrap select { padding: 7px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151; background: #fff; cursor: pointer; min-width: 260px; }
+.filial-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.filial-table th { background: #f8fafc; color: #6b7280; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 8px 12px; text-align: left; border-bottom: 2px solid #e5e7eb; }
+.filial-table th.num { text-align: center; }
+.filial-table td { padding: 7px 12px; border-bottom: 1px solid #f5f5f5; color: #374151; }
+.filial-table td.num { text-align: center; font-weight: 600; }
+.filial-table tr:last-child td { border-bottom: none; }
+.filial-table tr:hover td { background: #fafbff; cursor: pointer; }
+.mini-bar { height: 8px; border-radius: 3px; display: inline-block; min-width: 4px; }
+
+/* Employee heatmap */
+.emp-heatmap-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid #e5e7eb; }
+.emp-heatmap { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+.emp-heatmap thead th { background: #1F4E79; color: #fff; padding: 7px 10px; text-align: center; font-size: 10px; white-space: nowrap; border: 1px solid rgba(255,255,255,.15); }
+.emp-heatmap thead th.left { text-align: left; background: #163c60; }
+.emp-heatmap thead th.left:hover { background: #1a4a72; }
+.emp-heatmap thead th.sortable { cursor: pointer; user-select: none; }
+.emp-heatmap tbody td { padding: 6px 10px; text-align: center; border: 1px solid #f0f0f0; font-size: 11px; }
+.emp-heatmap tbody td.left { text-align: left; color: #374151; background: #f8fafc; white-space: nowrap; font-weight: normal; }
+.emp-heatmap tbody td.wrap { max-width: 160px; white-space: normal; line-height: 1.4; }
+.emp-heatmap tbody tr:nth-child(even) td.left { background: #f0f5fc; }
+.emp-heatmap tbody tr:hover td { filter: brightness(.96); }
+
+.footer { margin-top: 1.75rem; font-size: 11px; color: #cbd5e1; text-align: center; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning { animation: spin 1s linear infinite; transform-origin: center; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  <div class="header">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z" fill="rgba(255,255,255,0.9)"/>
+        <path d="M14 2v6h6" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="8" y1="13" x2="16" y2="13" stroke="#1F4E79" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="8" y1="17" x2="13" y2="17" stroke="#1F4E79" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="header-text" style="flex:1">
+      <h1>Конвертер + Дашборд</h1>
+      <p>Аналитика прогресса · Контроль филиалов · 11. див. Северо-Западный</p>
+      <span class="badge">11. див. Северо-Западный</span>
+    </div>
+    <button id="btn-dl-hdr" onclick="doDownload()" style="display:none;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:none;background:#1F4E79;color:#fff;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;transition:background .15s" onmouseover="this.style.background='#163c60'" onmouseout="this.style.background='#1F4E79'">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M19 13v6H5v-6H3v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6h-2zm-7 1l-4-4h3V3h2v7h3l-4 4z"/></svg>
+      Скачать отчёт
+    </button>
+  </div>
+
+
+
+  <div class="prog-wrap" id="pw"><div class="prog-bar" id="pb"></div></div>
+  <div class="status-wrap"><div class="status" id="st"></div></div>
+
+  <div id="result">
+    <hr class="divider">
+    <div class="result-head">
+      <div class="check-circle"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <div class="result-head-text">
+        <div class="t">Данные обработаны</div>
+        <div class="s" id="out-name"></div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="n" id="s1">—</div><div class="l">Учеников</div></div>
+      <div class="stat"><div class="n" id="s2">—</div><div class="l">Курсов</div></div>
+      <div class="stat"><div class="n" id="s3">—</div><div class="l">РРС</div></div>
+
+    </div>
+
+    <button class="btn-reset" style="margin-bottom:1.5rem" onclick="doReset()">Загрузить другие файлы</button>
+
+    <div id="tp-dash">
+      <div class="dash-cards">
+        <div class="dash-card"><div class="dn" id="dc-emp">—</div><div class="dl">Учеников</div></div>
+        <div class="dash-card"><div class="dn" id="dc-rrs">—</div><div class="dl">РРС</div></div>
+        <div class="dash-card"><div class="dn" id="dc-avg">—</div><div class="dl">Средний прогресс</div></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">Средний прогресс по РРС</div>
+        <div class="bar-list" id="rrs-bars"></div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">Прогресс по курсам × РРС</div>
+        <div class="heatmap-wrap">
+          <table class="heatmap" id="heatmap"></table>
+        </div>
+        <div style="font-size:10px;color:#9ca3af;margin-top:6px">Нажми на строку РРС → разбивка по филиалам ↓</div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">Разбивка по филиалам</div>
+        <div class="select-wrap">
+          <select id="rrs-select" onchange="renderFilials()">
+            <option value="">— Выбери РРС —</option>
+          </select>
+        </div>
+        <table class="filial-table" id="filial-table">
+          <thead><tr>
+            <th>Филиал</th>
+            <th class="num">Учеников</th>
+            <th class="num">Средний прогресс</th>
+            <th style="min-width:120px"></th>
+          </tr></thead>
+          <tbody id="filial-body"></tbody>
+        </table>
+        <div style="font-size:10px;color:#9ca3af;margin-top:6px">Нажми на строку → откроются сотрудники ↓</div>
+      </div>
+
+      <div class="dash-section">
+        <div class="dash-section-title">Сотрудники филиала</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+          <select id="fil-select" onchange="renderEmpTable()" style="padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;color:#374151;background:#fff;cursor:pointer;min-width:260px">
+            <option value="">— Выберите филиал —</option>
+          </select>
+          <select id="dolzh-select" onchange="renderEmpTable()" style="padding:7px 12px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;color:#374151;background:#fff;cursor:pointer;min-width:200px">
+            <option value="">Должность — Все</option>
+          </select>
+        </div>
+        <div id="emp-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">Работает офлайн · данные не покидают браузер</div>
+</div>
+
+<script>
+/* ══ CONFIG ══ */
+const DIV_FILTER  = 'Северо-Западный';
+const COLS_OUT = ['Дивизион','РРС (факт)','РРС (эталон)','Филиал (факт)','Филиал (эталон)','Код сотрудника','Должность','Дата трудоустройства','Срок в должности (дни)'];
+const FIXED_COURSES = [
+  'Курс "Welcome" (СЗ)','Курс "Товар" (СЗ)','Тест "Касса" (СЗ)',
+  'Курс "Технология Продаж" (СЗ)','Тест "Торговый зал" (СЗ)',
+  'Тест "Склад" (СЗ)','Курс "Лидерство" (СЗ)',
+];
+const COURSE_SHORT = {
+  'Курс "Welcome" (СЗ)':           'Welcome',
+  'Курс "Товар" (СЗ)':             'Товар',
+  'Тест "Касса" (СЗ)':             'Касса',
+  'Курс "Технология Продаж" (СЗ)': 'Тех. продаж',
+  'Тест "Торговый зал" (СЗ)':      'Торг. зал',
+  'Тест "Склад" (СЗ)':             'Склад',
+  'Курс "Лидерство" (СЗ)':         'Лидерство',
+};
+const VALID_RRS = [
+  'РРС СЗ СПБ Север','РРС СЗ СПБ Восток','РРС СЗ СПБ Юг',
+  'РРС СЗ Север','РРС СЗ ЛО Восток','РРС СЗ ЛО Запад','РРС СЗ Юг',
+  'РРС СЗ Калининградская обл.'
+];
+
+/* Style indices */
+const S = { DEF:0, HDR_DARK:1, HDR_BLUE:2, RED:3, YELLOW:4, GREEN:5, MISMATCH_HDR:6, MISMATCH:7 };
+
+const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<fonts count="6">
+<font><sz val="9"/><name val="Arial"/></font>
+<font><b/><sz val="9"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>
+<font><sz val="9"/><color rgb="FFC00000"/><name val="Arial"/></font>
+<font><sz val="9"/><color rgb="FF7F6000"/><name val="Arial"/></font>
+<font><b/><sz val="9"/><color rgb="FF375623"/><name val="Arial"/></font>
+<font><b/><sz val="9"/><color rgb="FF7D4E00"/><name val="Arial"/></font>
+</fonts>
+<fills count="9">
+<fill><patternFill patternType="none"/></fill>
+<fill><patternFill patternType="gray125"/></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF1F4E79"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FF2E75B6"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFE0E0"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFE2EFDA"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFB347"/><bgColor indexed="64"/></patternFill></fill>
+<fill><patternFill patternType="solid"><fgColor rgb="FFFFF3CD"/><bgColor indexed="64"/></patternFill></fill>
+</fills>
+<borders count="2">
+<border><left/><right/><top/><bottom/><diagonal/></border>
+<border>
+<left style="thin"><color rgb="FFD5D5D5"/></left><right style="thin"><color rgb="FFD5D5D5"/></right>
+<top style="thin"><color rgb="FFD5D5D5"/></top><bottom style="thin"><color rgb="FFD5D5D5"/></bottom><diagonal/>
+</border>
+</borders>
+<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+<cellXfs count="8">
+<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"><alignment vertical="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="2" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="4" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>
+<xf numFmtId="0" fontId="1" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
+<xf numFmtId="0" fontId="5" fillId="8" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center"/></xf>
+</cellXfs>
+<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
+</styleSheet>`;
+
+/* ══ STATE ══ */
+let outBlob=null, outName='', dashData=[], allCourses=[], reportDate=new Date();
+let fileData=null, fileMag=null;
+
+/* ══ UTILS ══ */
+function setProg(p){document.getElementById('pw').style.display=p>0?'block':'none';document.getElementById('pb').style.width=p+'%';}
+function setStatus(msg,cls){const el=document.getElementById('st');el.textContent=msg;el.className='status'+(cls?' '+cls:'');}
+function str2ab(s){const b=new ArrayBuffer(s.length),v=new Uint8Array(b);for(let i=0;i<s.length;i++)v[i]=s.charCodeAt(i)&0xFF;return b;}
+function parseProg(val){const r={};if(!val)return r;String(val).split(';').forEach(p=>{const m=p.trim().match(/^(.+?):\s*(\d+)%/);if(m)r[m[1].trim()]=parseInt(m[2]);});return r;}
+function avg(arr){const f=arr.filter(v=>v!==null&&v!==undefined&&v!=='');return f.length?Math.round(f.reduce((a,b)=>a+b,0)/f.length):null;}
+function progColor(v){
+  if(v===null||v===undefined)return{bg:'#F5F5F5',fg:'#AAAAAA'};
+  if(v===0)return{bg:'#FFE0E0',fg:'#C00000'};
+  if(v===100)return{bg:'#E2EFDA',fg:'#375623'};
+  if(v<40)return{bg:'#FFE8DC',fg:'#9A3400'};
+  if(v<70)return{bg:'#FFF2CC',fg:'#7F6000'};
+  return{bg:'#EAF5DC',fg:'#2D6A10'};
+}
+function barColor(v){if(v===null)return'#d1d5db';if(v<40)return'#f87171';if(v<70)return'#fbbf24';return'#4ade80';}
+function switchTab(id){renderDashboard();}
+
+
+/* Days between two dates */
+function daysBetween(d1,d2){
+  return Math.floor((d2-d1)/(1000*60*60*24));
+}
+
+/* Parse date from various formats */
+function parseDate(val){
+  if(!val)return null;
+  if(val instanceof Date)return val;
+  const s=String(val).trim();
+  /* DD.MM.YYYY */
+  let m=s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+  if(m)return new Date(parseInt(m[3]),parseInt(m[2])-1,parseInt(m[1]));
+  /* YYYY-MM-DD */
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m)return new Date(parseInt(m[1]),parseInt(m[2])-1,parseInt(m[3]));
+  /* Excel serial number */
+  if(!isNaN(val)){const d=new Date(Math.round((val-25569)*86400*1000));if(d.getFullYear()>1990)return d;}
+  return null;
+}
+
+
+
+/* ══ MAIN PROCESSOR ══ */
+async function processAll(){
+  if(!fileData||!fileMag){setStatus('Загрузи оба файла','error');return;}
+  outBlob=null;dashData=[];allCourses=[];
+  outName=fileData.name.replace(/\.xlsx$/i,'')+'_СЗ_opt.xlsx';
+  setStatus('Читаю файлы…');setProg(10);
+  document.getElementById('result').style.display='none';
+
+  try{
+    /* 1. Read magazin — build lookup: Код → {филиал, ррс} */
+    const wbMag=XLSX.read(new Uint8Array(await fileMag.arrayBuffer()),{type:'array'});
+    const wsMag=wbMag.Sheets[wbMag.SheetNames[0]];
+    const magRows=XLSX.utils.sheet_to_json(wsMag,{defval:''});
+    const magMap={};
+    magRows.forEach(r=>{
+      const kod=String(r['Код']||r['Код сотрудника']||'').trim();
+      if(kod)magMap[kod]={филиал:String(r['Филиал']||'').trim(),ррс:String(r['РРС']||'').trim()};
+    });
+    setProg(25);
+
+    /* 2. Read data.xlsx */
+    const wbData=XLSX.read(new Uint8Array(await fileData.arrayBuffer()),{type:'array'});
+    const snData=wbData.SheetNames.find(s=>s==='Report')||wbData.SheetNames[0];
+    const raw=XLSX.utils.sheet_to_json(wbData.Sheets[snData],{defval:''});
+    if(!raw.length)throw new Error('data.xlsx пустой');
+    setProg(40);
+
+    /* 3. Filter division + dismissed */
+    const divRows=raw.filter(r=>String(r['Дивизион']||'').includes(DIV_FILTER));
+    if(!divRows.length)throw new Error('Нет строк с дивизионом СЗ');
+    const rows=divRows.filter(r=>{
+      const comment=String(r['Комментарий']||'').trim();
+      const quit=String(r['Дата увольнения']||'').trim();
+      return comment===''&&quit==='';
+    });
+    if(!rows.length)throw new Error('После фильтрации не осталось строк');
+
+    allCourses=FIXED_COURSES;
+    const refDate=reportDate||new Date();
+
+    /* 4. Build AOA + styleMap + dashData */
+    const hdr=[...COLS_OUT,...allCourses,'Был(а) онлайн','Добавлен'];
+    /* Column indices */
+    const colRRSFakt=hdr.indexOf('РРС (факт)');
+    const colRRSEtal=hdr.indexOf('РРС (эталон)');
+    const colFilFakt=hdr.indexOf('Филиал (факт)');
+    const colFilEtal=hdr.indexOf('Филиал (эталон)');
+    const colSrok=hdr.indexOf('Срок в должности (дни)');
+    const csC=COLS_OUT.length, ceC=csC+allCourses.length-1;
+
+    const sm={};
+    hdr.forEach((_,ci)=>{
+      if(ci===colFilEtal||ci===colRRSEtal){sm[XLSX.utils.encode_cell({r:0,c:ci})]=S.MISMATCH_HDR;}
+      else{sm[XLSX.utils.encode_cell({r:0,c:ci})]=(ci>=csC&&ci<=ceC)?S.HDR_BLUE:S.HDR_DARK;}
+    });
+
+    const aoa=[hdr];
+    let mismatchCount=0;
+
+    rows.forEach((row,ri)=>{
+      const kod=String(row['Код сотрудника']||'').trim();
+      const faktFil=String(row['Филиал']||'').trim();
+      const faktRRS=String(row['РРС']||'').trim();
+      const etalFil=magMap[kod]?magMap[kod].филиал:'';
+      const etalRRS=magMap[kod]?magMap[kod].ррс:'';
+      const isMismatch=(etalFil!==''&&etalFil!==faktFil)||(etalRRS!==''&&etalRRS!==faktRRS);
+      if(isMismatch)mismatchCount++;
+
+      /* Срок в должности */
+      const hireDate=parseDate(row['Дата трудоустройства']);
+      const srok=hireDate?daysBetween(hireDate,refDate):null;
+
+      const p2=parseProg(row['Прогресс по курсам']);
+      const out=[];
+
+      /* COLS_OUT */
+      out.push(String(row['Дивизион']||'').trim());
+      out.push(faktRRS);
+      out.push(etalRRS);
+      out.push(faktFil);
+      out.push(etalFil);
+      out.push(kod);
+      out.push(String(row['Должность']||'').trim());
+      out.push(String(row['Дата трудоустройства']||'').replace(/\s0:00:00$/,''));
+      out.push(srok!==null?srok:'');
+
+      /* Courses */
+      allCourses.forEach((c,ci)=>{
+        const v=p2[c];
+        if(v!==undefined){
+          out.push(v);
+          sm[XLSX.utils.encode_cell({r:ri+1,c:csC+ci})]=v===0?S.RED:v===100?S.GREEN:S.YELLOW;
+        }else out.push('');
+      });
+      out.push(row['Был(а) онлайн']||'');
+      out.push(row['Добавлен']||'');
+      aoa.push(out);
+
+      /* Highlight mismatch row */
+      if(isMismatch){
+        hdr.forEach((_,ci)=>{
+          if(ci!==colFilFakt&&ci!==colFilEtal&&ci!==colRRSFakt&&ci!==colRRSEtal){
+            const addr=XLSX.utils.encode_cell({r:ri+1,c:ci});
+            if(!(ci>=csC&&ci<=ceC)){sm[addr]=S.MISMATCH;}
+          }
+        });
+        sm[XLSX.utils.encode_cell({r:ri+1,c:colFilFakt})]=S.MISMATCH;
+        sm[XLSX.utils.encode_cell({r:ri+1,c:colFilEtal})]=S.MISMATCH;
+        sm[XLSX.utils.encode_cell({r:ri+1,c:colRRSFakt})]=S.MISMATCH;
+        sm[XLSX.utils.encode_cell({r:ri+1,c:colRRSEtal})]=S.MISMATCH;
+      }
+
+      /* dashData */
+      const курсы={};allCourses.forEach(c=>{const v=p2[c];курсы[c]=v!==undefined?v:null;});
+      dashData.push({
+        ррс:String(row['РРС']||'—').trim(),
+        филиал:faktFil,
+        isMismatch,
+        курсы,
+        'Код сотрудника':kod,
+        'Должность':String(row['Должность']||'').trim(),
+        'Дата трудоустройства':String(row['Дата трудоустройства']||'').replace(/\s0:00:00$/,''),
+        'Срок в должности':srok,
+        'Был(а) онлайн':row['Был(а) онлайн']||'',
+        'Добавлен':row['Добавлен']||'',
+        'Филиал эталон':etalFil,
+        'РРС эталон':etalRRS,
+      });
+    });
+
+    setProg(65);
+
+    /* 5. Write workbook */
+    const ws=XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols']=hdr.map(h=>({wch:
+      h==='Дивизион'?26:h==='РРС'?22:
+      h==='Филиал (факт)'||h==='Филиал (эталон)'?24:
+      h==='Код сотрудника'?14:h==='Должность'?26:
+      h==='Дата трудоустройства'?14:h==='Срок в должности (дни)'?12:
+      h==='Был(а) онлайн'?13:h==='Добавлен'?11:14
+    }));
+    ws['!autofilter']={ref:'A1:'+XLSX.utils.encode_col(hdr.length-1)+'1'};
+    const newWb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(newWb,ws,'Отчёт СЗ');
+    const bin=XLSX.write(newWb,{bookType:'xlsx',type:'binary'});
+    setProg(78);
+
+    /* 6. Patch ZIP: styles + s attributes */
+    const zip=await JSZip.loadAsync(str2ab(bin));
+    zip.file('xl/styles.xml',STYLES_XML);
+    const sk=Object.keys(zip.files).find(f=>/^xl\/worksheets\/sheet\d+\.xml$/.test(f));
+    if(!sk)throw new Error('sheet XML not found');
+    let xml=await zip.file(sk).async('string');
+    xml=xml.replace(/<c r="([^"]+)"([^>]*?)(\s*\/?>)/g,(m,ref,mid,tail)=>{
+      const si=sm[ref];if(si===undefined)return m;
+      return'<c r="'+ref+'"'+mid.replace(/\s+s="\d+"/,'')+' s="'+si+'"'+tail;
+    });
+    xml=xml.replace(/(<row\b[^>]*\br="1"[^>]*)>/,'$1 ht="42" customHeight="1">');
+    zip.file(sk,xml);setProg(92);
+    outBlob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    setProg(100);setTimeout(()=>setProg(0),500);setStatus('');
+
+    /* 7. Update UI */
+    const validRows=dashData.filter(r=>VALID_RRS.includes(r.ррс));
+    document.getElementById('s1').textContent=validRows.length.toLocaleString('ru');
+    document.getElementById('s2').textContent=allCourses.length;
+    document.getElementById('s3').textContent=VALID_RRS.length;
+
+    document.getElementById('out-name').textContent=outName+
+      (reportDate?' · Дата отчёта: '+reportDate.toLocaleDateString('ru'):'');
+
+    document.getElementById('result').style.display='block';
+    document.getElementById('btn-dl-hdr').style.display='flex';
+    renderDashboard();
+
+  }catch(err){setStatus('Ошибка: '+err.message,'error');setProg(0);console.error(err);}
+}
+
+/* ══ DASHBOARD ══ */
+function renderDashboard(){
+  if(!dashData.length)return;
+  const validData=dashData.filter(r=>VALID_RRS.includes(r.ррс));
+  const byRRS={};VALID_RRS.forEach(r=>byRRS[r]=[]);
+  validData.forEach(r=>{if(byRRS[r.ррс])byRRS[r.ррс].push(r);});
+  const empAvgs=validData.map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null);
+  const overallAvg=empAvgs.length?Math.round(empAvgs.reduce((a,b)=>a+b,0)/empAvgs.length):0;
+
+  document.getElementById('dc-emp').textContent=validData.length.toLocaleString('ru');
+  document.getElementById('dc-rrs').textContent=VALID_RRS.length;
+  const avgEl=document.getElementById('dc-avg');avgEl.textContent=overallAvg+'%';
+  avgEl.style.color=overallAvg<40?'#C00000':overallAvg<70?'#7F6000':'#375623';
+
+  const rrsAvgMap={};
+  VALID_RRS.forEach(rrs=>{if(!byRRS[rrs]){rrsAvgMap[rrs]=null;return;}const ea=byRRS[rrs].map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null);rrsAvgMap[rrs]=ea.length?Math.round(ea.reduce((a,b)=>a+b,0)/ea.length):null;});
+  const rrsSorted=[...VALID_RRS].sort((a,b)=>{if(rrsAvgMap[a]===null&&rrsAvgMap[b]===null)return 0;if(rrsAvgMap[a]===null)return 1;if(rrsAvgMap[b]===null)return -1;return rrsAvgMap[b]-rrsAvgMap[a];});
+
+  /* Bars */
+  const barsEl=document.getElementById('rrs-bars');barsEl.innerHTML='';
+  rrsSorted.forEach(rrs=>{
+    const v=rrsAvgMap[rrs],cnt=byRRS[rrs]?byRRS[rrs].length:0;
+    const row=document.createElement('div');row.className='bar-row';
+    row.innerHTML='<div class="bar-label" title="'+rrs+'">'+rrs+'</div><div class="bar-track"><div class="bar-fill" style="width:'+(v||0)+'%;background:'+barColor(v)+'"></div></div><div class="bar-pct">'+(v!==null?v+'%':'—')+'</div><div class="bar-cnt">'+cnt+' чел.</div>';
+    barsEl.appendChild(row);
+  });
+
+  /* Heatmap */
+  const hm=document.getElementById('heatmap');hm.innerHTML='';
+  const thead=hm.createTHead();const tr0=thead.insertRow();
+  const thRRS=document.createElement('th');thRRS.className='rrs-col';thRRS.textContent='РРС';tr0.appendChild(thRRS);
+  allCourses.forEach(c=>{const th=document.createElement('th');th.textContent=COURSE_SHORT[c]||c;th.title=c;tr0.appendChild(th);});
+  const thAvg=document.createElement('th');thAvg.className='avg-col';thAvg.textContent='Среднее';tr0.appendChild(thAvg);
+  const tbody=hm.createTBody();
+  rrsSorted.forEach(rrs=>{
+    const tr=tbody.insertRow();
+    const td0=tr.insertCell();td0.className='rrs-name';td0.textContent=rrs;td0.onclick=()=>selectRRS(rrs);
+    allCourses.forEach(c=>{const vals=(byRRS[rrs]||[]).map(r=>r.курсы[c]).filter(v=>v!==null&&v!==undefined);const v=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):null;const td=tr.insertCell();const col=progColor(v);td.style.background=col.bg;td.style.color=col.fg;td.textContent=v!==null?v+'%':'—';});
+    const tdA=tr.insertCell();const va=rrsAvgMap[rrs];const ca=progColor(va);tdA.style.background=ca.bg;tdA.style.color=ca.fg;tdA.style.fontWeight='700';tdA.textContent=va!==null?va+'%':'—';
+  });
+  const tfoot=document.createElement('tfoot');const trf=document.createElement('tr');
+  const tf0=document.createElement('td');tf0.className='rrs-name';tf0.textContent='Среднее по дивизиону';trf.appendChild(tf0);
+  allCourses.forEach(c=>{const vals=validData.map(r=>r.курсы[c]).filter(v=>v!==null&&v!==undefined);const v=vals.length?Math.round(vals.reduce((a,b)=>a+b,0)/vals.length):null;const td=document.createElement('td');td.style.fontWeight='700';const col=progColor(v);td.style.color=col.fg;td.textContent=v!==null?v+'%':'—';trf.appendChild(td);});
+  const tfA=document.createElement('td');tfA.style.fontWeight='700';const cfa=progColor(overallAvg);tfA.style.color=cfa.fg;tfA.textContent=overallAvg+'%';trf.appendChild(tfA);
+  tfoot.appendChild(trf);hm.appendChild(tfoot);
+
+  /* RRS select */
+  const sel=document.getElementById('rrs-select');sel.innerHTML='<option value="">— Выбери РРС —</option>';
+  rrsSorted.forEach(rrs=>{const o=document.createElement('option');o.value=rrs;o.textContent=rrs;sel.appendChild(o);});
+
+  /* Filial select */
+  const allFils=[...new Set(validData.map(r=>r.филиал))].sort();
+  const filSel=document.getElementById('fil-select');filSel.innerHTML='<option value="">— Выберите филиал —</option>';
+  allFils.forEach(f=>{const o=document.createElement('option');o.value=f;o.textContent=f;filSel.appendChild(o);});
+
+  /* Должность select */
+  const allRoles=[...new Set(validData.map(r=>r['Должность']).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+  const dolzhSel=document.getElementById('dolzh-select');dolzhSel.innerHTML='<option value="">Должность — Все</option>';
+  allRoles.forEach(d=>{const o=document.createElement('option');o.value=d;o.textContent=d;dolzhSel.appendChild(o);});
+}
+
+function selectRRS(rrs){document.getElementById('rrs-select').value=rrs;renderFilials();document.getElementById('rrs-select').scrollIntoView({behavior:'smooth',block:'center'});}
+
+function renderFilials(){
+  const rrs=document.getElementById('rrs-select').value;
+  const tbody=document.getElementById('filial-body');tbody.innerHTML='';
+  if(!rrs)return;
+  const validData=dashData.filter(r=>VALID_RRS.includes(r.ррс));
+  const rows=validData.filter(r=>r.ррс===rrs);
+  const byFil={};rows.forEach(r=>{if(!byFil[r.филиал])byFil[r.филиал]=[];byFil[r.филиал].push(r);});
+  const filials=Object.keys(byFil).sort((a,b)=>{const va=avg(byFil[b].map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null));const vb=avg(byFil[a].map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null));return(va||0)-(vb||0);});
+  filials.forEach(fil=>{
+    const frows=byFil[fil];
+    const empA=frows.map(r=>avg(Object.values(r.курсы))).filter(v=>v!==null);
+    const v=empA.length?Math.round(empA.reduce((a,b)=>a+b,0)/empA.length):null;
+    const col=progColor(v);
+    const tr=tbody.insertRow();
+    tr.innerHTML='<td>'+fil+'</td><td class="num">'+frows.length+'</td><td class="num" style="color:'+col.fg+';background:'+col.bg+'">'+(v!==null?v+'%':'—')+'</td><td><div class="mini-bar" style="width:'+(v||0)+'%;max-width:120px;background:'+barColor(v)+'"></div></td>';
+    tr.addEventListener('click',()=>{document.getElementById('fil-select').value=fil;renderEmpTable();document.getElementById('fil-select').scrollIntoView({behavior:'smooth',block:'center'});});
+  });
+}
+
+function renderEmpTable(){
+  const fil=document.getElementById('fil-select').value;
+  const dolzh=document.getElementById('dolzh-select').value;
+  const container=document.getElementById('emp-container');container.innerHTML='';
+  if(!fil)return;
+  const validData=dashData.filter(r=>VALID_RRS.includes(r.ррс));
+  const rows=validData.filter(r=>r.филиал===fil&&(!dolzh||r['Должность']===dolzh));
+  if(!rows.length){container.innerHTML='<div style="font-size:13px;color:#9ca3af;padding:12px 0">Нет данных</div>';return;}
+  rows.sort((a,b)=>(avg(Object.values(b.курсы))||0)-(avg(Object.values(a.курсы))||0));
+
+  const wrap=document.createElement('div');wrap.className='emp-heatmap-wrap';
+  const t=document.createElement('table');t.className='emp-heatmap';
+
+  /* Header */
+  const thead=t.createTHead();const thr=thead.insertRow();
+  let sortByDolzh=false;
+  let sortBySrok=false;
+  const hdrs=['Код сотрудника','Должность','Срок (дни)','Дата трудоустройства'];
+  hdrs.forEach((h,i)=>{
+    const th=document.createElement('th');th.className='left';
+    if(i===1){
+      th.className='left sortable';
+      th.innerHTML='Должность <span style="font-size:9px;opacity:.7">⇅</span>';
+      th.title='Сортировать по должности';
+      th.addEventListener('click',()=>{
+        sortByDolzh=!sortByDolzh;
+        th.querySelector('span').textContent=sortByDolzh?'↑':'↓';
+        const tb=t.tBodies[0];
+        [...tb.rows].sort((a,b)=>sortByDolzh?a.cells[1].textContent.trim().localeCompare(b.cells[1].textContent.trim(),'ru'):b.cells[1].textContent.trim().localeCompare(a.cells[1].textContent.trim(),'ru')).forEach(r=>tb.appendChild(r));
+      });
+    }else if(i===2){
+      th.className='left sortable';
+      th.innerHTML='Срок (дни) <span style="font-size:9px;opacity:.7">⇅</span>';
+      th.title='Сортировать по сроку';
+      th.addEventListener('click',()=>{
+        sortBySrok=!sortBySrok;
+        th.querySelector('span').textContent=sortBySrok?'↑':'↓';
+        const tb=t.tBodies[0];
+        [...tb.rows].sort((a,b)=>{
+          const va=parseInt(a.cells[2].textContent)||0;
+          const vb=parseInt(b.cells[2].textContent)||0;
+          return sortBySrok?va-vb:vb-va;
+        }).forEach(r=>tb.appendChild(r));
+      });
+    }else{th.textContent=h;}
+    thr.appendChild(th);
+  });
+  allCourses.forEach(c=>{const th=document.createElement('th');th.textContent=COURSE_SHORT[c]||c;th.title=c;thr.appendChild(th);});
+  const thAvg=document.createElement('th');thAvg.textContent='Среднее';thr.appendChild(thAvg);
+
+  ['Был(а) онлайн','Добавлен'].forEach(h=>{const th=document.createElement('th');th.textContent=h;thr.appendChild(th);});
+
+  /* Body */
+  const tbody=t.createTBody();
+  rows.forEach(emp=>{
+    const tr=tbody.insertRow();
+    const mis=emp.isMismatch;
+    /* Info cols */
+    const code=emp['Код сотрудника']||'—';
+    const dolzhV=emp['Должность']||'—';
+    const srok=emp['Срок в должности']!==null&&emp['Срок в должности']!==undefined?emp['Срок в должности']+' дн.':'—';
+    const hire=emp['Дата трудоустройства']||'—';
+
+    [code,dolzhV,srok,hire].forEach((v,i)=>{
+      const td=tr.insertCell();td.className=i===1?'left wrap':'left';td.textContent=v;
+
+    });
+
+    /* Courses */
+    allCourses.forEach(c=>{
+      const td=tr.insertCell();const v=emp.курсы[c];
+      if(v!==null&&v!==undefined){const col=progColor(v);td.style.background=col.bg;td.style.color=col.fg;if(v===100)td.style.fontWeight='700';td.textContent=v+'%';}
+      else{td.textContent='—';td.style.color='#ccc';}
+    });
+
+    /* Row avg */
+    const empAvgV=avg(Object.values(emp.курсы));
+    const tdA=tr.insertCell();
+    if(empAvgV!==null){const col=progColor(empAvgV);tdA.style.background=col.bg;tdA.style.color=col.fg;tdA.style.fontWeight='700';tdA.textContent=empAvgV+'%';}
+    else{tdA.textContent='—';tdA.style.color='#ccc';}
+
+
+
+    [emp['Был(а) онлайн']||'—',emp['Добавлен']||'—'].forEach(v=>{const td=tr.insertCell();td.style.fontSize='11px';td.style.color='#6b7280';td.textContent=v;});
+  });
+
+  wrap.appendChild(t);container.appendChild(wrap);
+}
+
+/* ══ DOWNLOAD / RESET ══ */
+function doDownload(){if(!outBlob)return;const url=URL.createObjectURL(outBlob),a=document.createElement('a');a.href=url;a.download=outName;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),2000);}
+function doReset(){outBlob=null;dashData=[];allCourses=[];fileData=null;fileMag=null;document.getElementById('result').style.display='none';document.getElementById('btn-dl-hdr').style.display='none';document.getElementById('st').textContent='';}
+
+/* ══ AUTO-LOAD both files from GitHub ══ */
+async function fetchFile(path, label) {
+  const resp = await fetch(path + '?v=' + Date.now());
+  if (!resp.ok) throw new Error(label + ' не найден');
+  const blob = await resp.blob();
+  const lastMod = resp.headers.get('last-modified');
+  return { file: new File([blob], path.split('/').pop(), { type: blob.type }), lastMod };
+}
+
+async function autoLoad() {
+  const banner = document.createElement('div');
+  banner.id = 'auto-banner';
+  banner.style.cssText = 'display:flex;align-items:center;gap:10px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px 16px;margin-bottom:12px';
+  banner.innerHTML = `
+    <div id="auto-icon" style="width:28px;height:28px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <svg id="auto-spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+    </div>
+    <div style="flex:1">
+      <div id="auto-title" style="font-size:13px;font-weight:700;color:#1e3a5f">Загружаю файлы…</div>
+      <div id="auto-sub" style="font-size:11px;color:#6b7280;margin-top:1px">data.xlsx и magazin.xlsx из репозитория</div>
+    </div>
+    <div id="auto-time" style="font-size:11px;color:#9ca3af"></div>`;
+
+  /* Insert banner before drop zones */
+  const uploadRow = document.querySelector('.upload-row');
+  uploadRow.parentNode.insertBefore(banner, uploadRow);
+
+  const spinner = document.getElementById('auto-spinner');
+  spinner.style.animation = 'spin 1s linear infinite';
+  spinner.style.transformOrigin = 'center';
+
+  try {
+    const [resData, resMag] = await Promise.all([
+      fetchFile('./data.xlsx', 'data.xlsx'),
+      fetchFile('./magazin.xlsx', 'magazin.xlsx'),
+    ]);
+
+    fileData = resData.file;
+    fileMag  = resMag.file;
+    reportDate = new Date();
+
+    /* Update UI to show loaded state */
+
+
+    /* Show last modified */
+    if (resData.lastMod) {
+      const d = new Date(resData.lastMod);
+      document.getElementById('auto-time').textContent =
+        'Обновлён ' + d.toLocaleDateString('ru') + ' ' + d.toLocaleTimeString('ru', {hour:'2-digit', minute:'2-digit'});
+    }
+
+    document.getElementById('auto-title').textContent = 'Файлы загружены, обрабатываю…';
+    spinner.style.animation = 'spin 1s linear infinite';
+
+    await processAll();
+
+    /* Success */
+    spinner.style.animation = '';
+    spinner.innerHTML = '<polyline points="20 6 9 17 4 12" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
+    document.getElementById('auto-icon').style.background = '#d1fae5';
+    document.getElementById('auto-title').textContent = 'Данные загружены автоматически';
+    document.getElementById('auto-title').style.color  = '#065f46';
+    document.getElementById('auto-sub').textContent = 'Обновите страницу чтобы подтянуть свежие файлы';
+
+  } catch(err) {
+    /* Files not on GitHub yet — hide banner silently, let user upload manually */
+    spinner.style.animation = '';
+    banner.remove();
+  }
+}
+
+window.addEventListener('DOMContentLoaded', autoLoad);
+</script>
+</body>
+</html>
